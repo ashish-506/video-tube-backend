@@ -49,13 +49,13 @@ const userSchema = new Schema({
   timestamps: true
 });
 
-userSchema.pre("save", async function(next){
+userSchema.pre("save", async function () {
   // don't use arrow functions here as you will use "this" keyword
-  if(!this.isModified("password")){
-    return next();
+  if (!this.isModified("password")) {
+    return;
   }
-  this.password = bcrypt.hash(this.password, 10);
-  next();
+
+  this.password = await bcrypt.hash(this.password, 10);
 });
 
 // we can define our own methods in the model if mongoose doesn't provide them like findOne, deleteOne etc
