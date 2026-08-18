@@ -19,6 +19,7 @@ const generateAccessAndRefreshTokens = async(userId)=>{
     throw new ApiError(500,"Something went wrong while generating tokens");
   }
 }
+
 const registerUser = asyncHandler(async (req, res) => {
   
   const { fullName, email, username, password } = req.body;
@@ -223,6 +224,7 @@ const updateUserAvatar = asyncHandler(async (req,res)=>{
     .json(new ApiResponse(200, user, "Avatar Image Updated Successfully"));
 
 })
+
 const updateUserCoverImage = asyncHandler(async (req,res)=>{
   const coverImageLocalPath = req.file?.path;
 
@@ -241,6 +243,78 @@ const updateUserCoverImage = asyncHandler(async (req,res)=>{
   .json(new ApiResponse(200,user,"Cover Image Updated Successfully"));
 })
 
+const getUserChannelProfile = asyncHandler(async (req,res)=>{
+  // finding subscribers of a user, or count of subscribers... look subsciption.model.js for schema
+  const {username} = req.params;
+
+  if(!username?.trim()){
+    throw new ApiError(400, "Username is missing");
+  }
+
+  const channel = await User.aggregate([
+    {// stage 1
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+    {// stage 2
+      $lookup: {
+        // my subscribers
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribers",
+      },
+    },
+    {// stage 3
+      $lookup: {
+        // whom I have subscribed
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribedTo",
+      },
+    },
+    { // stage 4
+      $addFields:{
+        subscribersCount:{
+          $size: "$subscribers"
+        },
+        channelsSubscribedToCount:{
+          $size: "$subscribedTo"
+        },
+        isSubscribed:{
+          // if user has subscribed to the current channel the he will see "subscribed" button else "subscribe" button
+          $cond:{
+            if:{$in: [req.user?._id,"$subscribers.subscriber"]},
+            then: true,
+            else: false
+          }
+        }
+      }
+    },
+    {// stage 5
+      $project:{
+        // client ko kon kon si fields show hongi
+        fullName: 1,
+        username: 1,
+        subscribersCount: 1,
+        channelsSubscribedToCount: 1,
+        isSubscribed: 1,
+        avatar: 1,
+        coverImage: 1,
+        email: 1
+      }
+    }
+  ]);
+
+  if(!channel?.length) throw new ApiError(404,"channel Does not exists");
+
+  return res
+  .status(200)
+  .json(new ApiResponse(200,channel[0],"User Channel fetched Successfully"));
+})
+
 export { 
   registerUser, 
   loginUser, 
@@ -250,5 +324,6 @@ export {
   getCurrentUser,
   updateAccountDetails,
   updateUserAvatar,
-  updateUserCoverImage
+  updateUserCoverImage,
+  getUserChannelProfile
 };
