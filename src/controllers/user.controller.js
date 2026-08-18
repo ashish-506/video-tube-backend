@@ -3,7 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-
+import jwt from "jsonwebtoken";
 
 const generateAccessAndRefreshTokens = async(userId)=>{
   try {
@@ -84,8 +84,6 @@ const loginUser = asyncHandler(async (req,res)=>{
     $or : [{username},{email}]
   })
 
-  // yaha dhyaan dena hoga ki "user" hai ya "User", "User" mongodb me ek model ka naam hai, ek collection hai
-
   if(!user) throw new ApiError(404,"user doesn't exists");
 
   const isPasswordValid = await user.isPasswordCorrect(password);
@@ -97,7 +95,7 @@ const loginUser = asyncHandler(async (req,res)=>{
 
   const options = {
     httpOnly: true,
-    secure: true // ab cookies sirf server prr hi modify ho paengi
+    secure: true
   }
 
   return res
@@ -106,26 +104,19 @@ const loginUser = asyncHandler(async (req,res)=>{
   .cookie("refreshToken",refreshToken,options)
   .json(new ApiResponse(200,{
     user: loggedInUser, accessToken, refreshToken 
-    // yaha isiliye phirse bhej rhe hai kyuki kya pta client inko apne local storage me set krna chhah rha ho ya any other use
   },"User loggedIn successfully"));
 })
 
 const logoutUser = asyncHandler(async (req,res)=>{
-  // yaha sbse badi problem hai ki userId kaise pta chale
-  // agr req.body se le liya id tb to koi bhi doosre user ko logout krr sakta hai
-  // just ek req.body me doosre ki userId bhej kr
-
-  // solution: ek middleware krdo kyuki cookieParser to hai hi jisme user ki details hongi
-  
   // step-1: clear the refresh token from db
   const userId = req.user._id;
   await User.findByIdAndUpdate(userId,{
-    $set : {refreshToken}
+    $set : {refreshToken:null}
   },{
-    new: true // isse response me updated value milegi purana data nahi
+    new: true
   });
 
-  //step-2: browser se hata do 
+  //step-2: clear it from browser 
   const options = {
     httpOnly: true,
     secure: true,
@@ -137,4 +128,45 @@ const logoutUser = asyncHandler(async (req,res)=>{
   .clearCookie("refreshToken",options)
   .json(new ApiResponse(200,{},"User logged out"));
 })
-export { registerUser, loginUser, logoutUser };
+
+const refreshAccessToken = asyncHandler(async (req,res)=>{
+  const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+  if(!incomingRefreshToken) throw new ApiError(401,"Unauthorized Request");
+
+  try {
+    const decodedToken = jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    );
+
+    const user = await User.findById(decodedToken?._id);
+    if (!user) throw new ApiError(401, "Invalid Refresh Token");
+
+    if (incomingRefreshToken !== user?.refreshToken)
+      throw new ApiError(401, "Refresh Token is Expired or used");
+
+    const options = {
+      httpOnly: true,
+      secure: true,
+    };
+
+    const { accessToken, newRefreshToken } =
+      await generateAccessAndRefreshTokens(user._id);
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken: newRefreshToken },
+          "Access Token Refreshed Successfully"
+        )
+      );
+  } catch (error) {
+    throw new ApiError(401,error?.message || "Invalid Refresh Token")
+  }
+})
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken };
