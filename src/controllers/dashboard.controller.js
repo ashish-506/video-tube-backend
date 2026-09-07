@@ -1,0 +1,77 @@
+import mongoose from "mongoose";
+import { Video } from "../models/video.model.js";
+import { Subscription } from "../models/subscription.model.js";
+import { Like } from "../models/like.model.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+
+const getChannelStats = asyncHandler(async (req, res) => {
+  const channelId = req.user._id;
+
+  // total subscribers is a simple count against the Subscription collection
+  const totalSubscribers = await Subscription.countDocuments({
+    channel: channelId,
+  });
+
+  // videos + views + likes are computed together in one pipeline since
+  // "likes" depend on knowing which video _ids belong to this channel first
+  const videoStats = await Video.aggregate([
+    { $match: { owner: new mongoose.Types.ObjectId(channelId) } },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "video",
+        as: "likes",
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalVideos: { $sum: 1 },
+        totalViews: { $sum: "$views" },
+        totalLikes: { $sum: { $size: "$likes" } },
+      },
+    },
+  ]);
+
+  const stats = {
+    totalSubscribers,
+    totalVideos: videoStats[0]?.totalVideos || 0,
+    totalViews: videoStats[0]?.totalViews || 0,
+    totalLikes: videoStats[0]?.totalLikes || 0,
+  };
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, stats, "Channel Stats Fetched Successfully"));
+});
+
+const getChannelVideos = asyncHandler(async (req, res) => {
+  const channelId = req.user._id;
+
+  const videos = await Video.aggregate([
+    { $match: { owner: new mongoose.Types.ObjectId(channelId) } },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "video",
+        as: "likes",
+      },
+    },
+    {
+      $addFields: {
+        likesCount: { $size: "$likes" },
+      },
+    },
+    { $project: { likes: 0 } }, // don't send the raw like documents, just the count
+    { $sort: { createdAt: -1 } },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, videos, "Channel Videos Fetched Successfully"));
+});
+
+export { getChannelStats, getChannelVideos };

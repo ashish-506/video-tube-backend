@@ -35,6 +35,22 @@ app.use("/api/v1/comments", commentRouter);
 import likeRouter from "./routes/like.routes.js";
 app.use("/api/v1/likes", likeRouter);
 
+// playlist route import
+import playlistRouter from "./routes/playlist.routes.js";
+app.use("/api/v1/playlists", playlistRouter);
+
+// tweet route import
+import tweetRouter from "./routes/tweet.routes.js";
+app.use("/api/v1/tweets", tweetRouter);
+
+// dashboard route import
+import dashboardRouter from "./routes/dashboard.routes.js";
+app.use("/api/v1/dashboard", dashboardRouter);
+
+// health check route import
+import healthcheckRouter from "./routes/healthcheck.routes.js";
+app.use("/api/v1/healthcheck", healthcheckRouter);
+
 // error Handler
 import { errorHandler } from "./middlewares/error.middleware.js";
 app.use(errorHandler); // must be last
